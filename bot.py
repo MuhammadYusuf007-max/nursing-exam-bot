@@ -16,7 +16,7 @@ load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hamshira_db.db")
-REQUIRED_CHANNELS = ["@misbah_ilm"] # Must be a public channel username
+REQUIRED_CHANNELS = ["@malakali_hamshiralar"] # Must be a public channel username
 ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875")) # Your Telegram ID
 
 # --- DB SETUP ---

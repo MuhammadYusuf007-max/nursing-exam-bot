@@ -604,6 +604,7 @@ def main():
                 CommandHandler('broadcast', admin_broadcast),
                 CommandHandler('grant_access', grant_access),
                 CommandHandler('revoke_access', revoke_access),
+                CommandHandler('fix', fix_question),
                 CommandHandler('users', admin_users)
             ],
             CHANGE_MAJOR: [
@@ -628,6 +629,21 @@ def main():
     
     app.add_handler(conv)
     app.run_polling()
+
+async def fix_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
+    db = SessionLocal()
+    question = db.query(Question).filter(Question.text.contains("Bemorlarni qayd qilish jurnali")).first()
+    
+    if question:
+        question.correct = 'a'
+        db.commit()
+        await update.message.reply_text("✅ Savol tuzatildi! Endi to'g'ri javob: A")
+    else:
+        await update.message.reply_text("❌ Savol topilmadi")
+    db.close()
 
 if __name__ == '__main__':
     main()

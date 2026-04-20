@@ -5,8 +5,7 @@ import asyncio
 import csv
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Float, BigInteger, Boolean, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
@@ -20,7 +19,7 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hamshira_db.db")
 REQUIRED_CHANNELS = ["@malakali_hamshiralar"]
-ADMIN_ID = int(os.getenv("ADMIN_ID", "822443682"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875"))
 
 # --- DB SETUP ---
 Base = declarative_base()
@@ -81,7 +80,7 @@ def admin_menu():
         [InlineKeyboardButton("📈 Test natijalari", callback_data='admin_test_results')],
         [InlineKeyboardButton("🗑️ Savol o'chirish", callback_data='admin_delete_question')],
         [InlineKeyboardButton("❌ Yopish", callback_data='admin_close')]
-    ], resize_keyboard=True)
+    ])  # Removed resize_keyboard parameter
 
 # ==================== SUBSCRIPTION CHECK ====================
 async def check_subscription(user_id, context):
@@ -218,7 +217,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         questions = db.query(Question).filter(Question.major == user.major).all()
         if len(questions) < 25:
             db.close()
-            await update.message.reply_text("Kechirasiz, bazada yetarli savollar yo'q.")
+            await update.message.reply_text("Kechirasiz, bazada yetarli savollar mavjud emas.")
             return MENU
         
         selected = random.sample(questions, 25)
@@ -408,16 +407,9 @@ async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== ENHANCED ADMIN PANEL ====================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Add debug prints
-    print(f"Admin command received from user: {update.effective_user.id}")
-    print(f"Expected admin ID: {ADMIN_ID}")
-    
     if update.effective_user.id != ADMIN_ID:
-        print("Access denied - not admin")
         await update.message.reply_text("⛔ Bu buyruq faqat admin uchun!")
         return MENU
-    
-    print("Access granted - showing admin panel")
     
     if update.callback_query:
         query = update.callback_query
@@ -425,17 +417,18 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text(
             "🛠 *Admin Panel*\n\nQuyidagi funksiyalardan birini tanlang:",
             reply_markup=admin_menu(),
-            parse_mode='Markdown'
+            parse_mode='HTML'  # Changed from 'Markdown' to 'HTML'
         )
     else:
         await update.message.reply_text(
             "🛠 *Admin Panel*\n\nQuyidagi funksiyalardan birini tanlang:",
             reply_markup=admin_menu(),
-            parse_mode='Markdown'
+            parse_mode='HTML'  # Changed from 'Markdown' to 'HTML'
         )
     return MENU
 
 async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle admin menu callbacks"""
     query = update.callback_query
     await query.answer()
     
@@ -444,8 +437,6 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             "➕ *Yangi test qo'shish*\n\n"
             "Quyidagi formatda yuboring:\n\n"
             "`Yo'nalish nomi\nSavol matni\nA javob\nB javob\nC javob\nD javob\na`\n\n"
-            "*Misol:*\n"
-            "`Hamshiralik ishi\nHamshiraning asosiy vazifasi nima?\nBemorlarni parvarish qilish\nDori yozish\nOperatsiya qilish\nTashxis qo'yish\na`\n\n"
             "Bekor qilish uchun /cancel yozing.",
             parse_mode='Markdown'
         )
@@ -592,28 +583,39 @@ async def show_test_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.edit_text(result_text, parse_mode='Markdown')
 
 async def show_questions_to_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show questions list for deletion"""
+    query = update.callback_query
+    await query.answer()
+    
     db = SessionLocal()
+    # Get all majors
     majors = db.query(Question.major).distinct().all()
     db.close()
     
     if not majors:
-        await update.callback_query.message.edit_text("📭 Bazada savollar yo'q.")
-        return
+        await query.message.edit_text("📭 Bazada savollar yo'q.")
+        return MENU
     
     keyboard = []
     for (major,) in majors:
-        keyboard.append([InlineKeyboardButton(f"📚 {major}", callback_data=f'delete_major_{major}')])
+        # Use simple callback data without special characters
+        keyboard.append([InlineKeyboardButton(f"📚 {major}", callback_data=f'del_maj_{major}')])
     keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data='admin_panel_back')])
     
-    await update.callback_query.message.edit_text(
+    await query.message.edit_text(
         "🗑️ *Savol o'chirish*\n\nYo'nalishni tanlang:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
+    return MENU
 
-async def show_questions_by_major(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_questions_by_major_simple(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show questions of selected major for deletion"""
     query = update.callback_query
-    major = query.data.replace('delete_major_', '')
+    await query.answer()
+    
+    # Get major from callback data
+    major = query.data.replace('del_maj_', '')
     
     db = SessionLocal()
     questions = db.query(Question).filter(Question.major == major).all()
@@ -621,61 +623,69 @@ async def show_questions_by_major(update: Update, context: ContextTypes.DEFAULT_
     
     if not questions:
         await query.message.edit_text(f"📭 {major} yo'nalishida savollar yo'q.")
-        return
-    
-    page = context.user_data.get('delete_page', 0)
-    per_page = 5
-    total_pages = (len(questions) + per_page - 1) // per_page
-    
-    start = page * per_page
-    end = min(start + per_page, len(questions))
+        return MENU
     
     keyboard = []
-    for q in questions[start:end]:
+    for q in questions:
         q_text = q.text[:40] + "..." if len(q.text) > 40 else q.text
-        keyboard.append([InlineKeyboardButton(f"❌ {q_text}", callback_data=f'delete_q_{q.id}')])
-    
-    nav_buttons = []
-    if page > 0:
-        nav_buttons.append(InlineKeyboardButton("◀️ Oldingi", callback_data=f'delete_page_{page-1}_{major}'))
-    if page < total_pages - 1:
-        nav_buttons.append(InlineKeyboardButton("Keyingi ▶️", callback_data=f'delete_page_{page+1}_{major}'))
-    
-    if nav_buttons:
-        keyboard.append(nav_buttons)
+        keyboard.append([InlineKeyboardButton(
+            f"❌ {q_text}", 
+            callback_data=f'del_question_{q.id}'
+        )])
     
     keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data='admin_delete_question')])
     
     await query.message.edit_text(
-        f"🗑️ *{major}* - Savol o'chirish\n\n{page+1}/{total_pages} - sahifa\n\nSavolni tanlang:",
+        f"🗑️ *{major}* - Savol o'chirish\n\nQuyidagi savollardan birini tanlang:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
+    return MENU
 
-async def delete_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def delete_question_simple(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete selected question"""
     query = update.callback_query
-    question_id = int(query.data.replace('delete_q_', ''))
+    await query.answer()
     
-    db = SessionLocal()
-    question = db.query(Question).filter(Question.id == question_id).first()
+    try:
+        question_id = int(query.data.replace('del_question_', ''))
+        
+        db = SessionLocal()
+        question = db.query(Question).filter(Question.id == question_id).first()
+        
+        if question:
+            major = question.major
+            db.delete(question)
+            db.commit()
+            await query.answer("✅ Savol o'chirildi!", show_alert=True)
+            db.close()
+            
+            # Go back to the questions list of the same major
+            # Create a new query to show updated list
+            query.data = f'del_maj_{major}'
+            await show_questions_by_major_simple(update, context)
+        else:
+            db.close()
+            await query.answer("❌ Savol topilmadi!", show_alert=True)
+            
+    except Exception as e:
+        await query.answer(f"Xatolik: {str(e)}", show_alert=True)
     
-    if question:
-        db.delete(question)
-        db.commit()
-        await query.answer("✅ Savol o'chirildi!", show_alert=True)
-    else:
-        await query.answer("❌ Savol topilmadi!", show_alert=True)
-    
-    db.close()
-    await show_questions_to_delete(update, context)
+    return MENU
 
 async def handle_delete_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle pagination in delete questions"""
     query = update.callback_query
+    await query.answer()
+    
     data = query.data.replace('delete_page_', '')
     page, major = data.split('_', 1)
     context.user_data['delete_page'] = int(page)
+    
+    # Show questions for the new page
     query.data = f'delete_major_{major}'
     await show_questions_by_major(update, context)
+    return MENU
 
 async def admin_save_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -802,17 +812,20 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
 
 # ==================== MAIN ====================
 def main():
-    app = Application.builder().token(TOKEN).build()
+    """Start the bot"""
+    # Create the Application
+    application = Application.builder().token(TOKEN).build()
     
+    # Create conversation handler
     conv = ConversationHandler(
         entry_points=[
-            CommandHandler('start', start), 
-            CommandHandler('admin', admin_panel), 
+            CommandHandler('start', start),
+            CommandHandler('admin', admin_panel),
             CallbackQueryHandler(start, pattern='^check_sub$'),
             CallbackQueryHandler(admin_callback_handler, pattern='^admin_'),
-            CallbackQueryHandler(show_questions_by_major, pattern='^delete_major_'),
-            CallbackQueryHandler(delete_question, pattern='^delete_q_'),
-            CallbackQueryHandler(handle_delete_pagination, pattern='^delete_page_'),
+            CallbackQueryHandler(show_questions_by_major_simple, pattern='^del_maj_'),
+            CallbackQueryHandler(delete_question_simple, pattern='^del_question_'),
+            CallbackQueryHandler(show_questions_to_delete, pattern='^admin_delete_question$'),
             CallbackQueryHandler(admin_panel, pattern='^admin_panel_back$')
         ],
         states={
@@ -826,6 +839,11 @@ def main():
                 MessageHandler(filters.Regex("^👨‍💻 Bog'lanish$"), contact_admin),
                 CallbackQueryHandler(ask_new_major, pattern='^change_major$'),
                 CallbackQueryHandler(handle_extra_callbacks, pattern='^(invite_friends|buy_attempts)$'),
+                CallbackQueryHandler(admin_callback_handler, pattern='^admin_'),
+                CallbackQueryHandler(show_questions_by_major_simple, pattern='^del_maj_'),
+                CallbackQueryHandler(delete_question_simple, pattern='^del_question_'),
+                CallbackQueryHandler(show_questions_to_delete, pattern='^admin_delete_question$'),
+                CallbackQueryHandler(admin_panel, pattern='^admin_panel_back$'),
                 CommandHandler('admin', admin_panel),
             ],
             CHANGE_MAJOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_major)],
@@ -836,14 +854,20 @@ def main():
             TESTING: [PollAnswerHandler(handle_answer)]
         },
         fallbacks=[
-            CommandHandler('start', start), 
+            CommandHandler('start', start),
             CommandHandler('admin', admin_panel),
         ],
         per_chat=False
     )
     
-    app.add_handler(conv)
-    app.run_polling()
+    # Add conversation handler
+    application.add_handler(conv)
+    
+    # Start the bot
+    print("🤖 Bot ishga tushdi...")
+    print(f"Admin ID: {ADMIN_ID}")
+    print("Press Ctrl+C to stop")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()

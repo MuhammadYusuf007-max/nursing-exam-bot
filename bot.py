@@ -408,9 +408,16 @@ async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== ENHANCED ADMIN PANEL ====================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Add debug prints
+    print(f"Admin command received from user: {update.effective_user.id}")
+    print(f"Expected admin ID: {ADMIN_ID}")
+    
     if update.effective_user.id != ADMIN_ID:
+        print("Access denied - not admin")
         await update.message.reply_text("⛔ Bu buyruq faqat admin uchun!")
         return MENU
+    
+    print("Access granted - showing admin panel")
     
     if update.callback_query:
         query = update.callback_query

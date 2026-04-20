@@ -20,7 +20,7 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hamshira_db.db")
 REQUIRED_CHANNELS = ["@malakali_hamshiralar"]
-ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "822443682"))
 
 # --- DB SETUP ---
 Base = declarative_base()

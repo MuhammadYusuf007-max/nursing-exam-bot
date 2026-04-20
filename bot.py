@@ -4,9 +4,9 @@ import io
 import asyncio
 import csv
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, BigInteger, ForeignKey, Boolean, func
+from sqlalchemy import create_engine, Column, Integer, String, Float, BigInteger, Boolean, func
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
@@ -19,8 +19,8 @@ load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hamshira_db.db")
-REQUIRED_CHANNELS = ["@malakali_hamshiralar"] # Must be a public channel username
-ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875")) # Your Telegram ID
+REQUIRED_CHANNELS = ["@malakali_hamshiralar"]
+ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875"))
 
 # --- DB SETUP ---
 Base = declarative_base()
@@ -54,7 +54,7 @@ class Question(Base):
     b = Column(String)
     c = Column(String)
     d = Column(String)
-    correct = Column(String) # 'a', 'b', 'c', or 'd'
+    correct = Column(String)
 
 Base.metadata.create_all(engine)
 
@@ -91,8 +91,7 @@ async def check_subscription(user_id, context):
             member = await context.bot.get_chat_member(ch, user_id)
             if member.status in ['left', 'kicked']:
                 not_subscribed.append(ch)
-        except Exception as e:
-            print(f"Error checking channel {ch}: {e}")
+        except Exception:
             not_subscribed.append(ch)
     return not_subscribed
 
@@ -108,14 +107,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
 
-    # Subscription Check
     not_subscribed = await check_subscription(user_id, context)
 
     if not_subscribed:
         keyboard = []
         for ch in not_subscribed:
             keyboard.append([InlineKeyboardButton(f"Obuna bo'lish: {ch}", url=f"https://t.me/{ch[1:]}")])
-            
         keyboard.append([InlineKeyboardButton("✅ Obuna bo'ldim", callback_data='check_sub')])
         
         msg_text = "Botdan foydalanish uchun quyidagi kanallarga a'zo bo'ling:"
@@ -182,7 +179,6 @@ async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         db.add(new_user)
         
-        # Referral Logic 
         ref_id = context.user_data.get('ref')
         if ref_id and ref_id.isdigit():
             ref_user = db.query(User).filter(User.id == int(ref_id)).first()
@@ -194,9 +190,8 @@ async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         chat_id=ref_user.id,
                         text=f"🎉 Tabriklaymiz! do'stingiz sizning havolangiz orqali ro'yxatdan o'tdi va sizga 3 ball va qo'shimcha 3 urinish qo'shildi!\nUmumiy urinishlar: {ref_user.attempts}"
                     )
-                except Exception as e:
-                    print(f"Invite notification error: {e}")
-                
+                except Exception:
+                    pass
         db.commit()
     finally:
         db.close()
@@ -315,7 +310,6 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data['q_idx'] < 25:
         return await send_question(update, context)
     else:
-        # Final Score: correct = +1, wrong = 0
         c = context.user_data['correct_count']
         w = 25 - c
         score = float(c)
@@ -374,6 +368,7 @@ async def save_new_major(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user:
         user.major = new_major
         db.commit()
+    db.close()
     
     await update.message.reply_text(f"Yo'nalishingiz muvaffaqiyatli '{new_major}' ga o'zgartirildi!", reply_markup=main_menu())
     return MENU
@@ -401,8 +396,7 @@ async def handle_extra_callbacks(update: Update, context: ContextTypes.DEFAULT_T
                 await query.message.reply_text(f"🤝 Do'stlaringizni taklif qilish uchun havola:\n\n{ref_link}")
             else:
                 await query.message.reply_text("Kechirasiz, sizning ma'lumotlaringiz topilmadi, iltimos /start buyrug'ini yozing.")
-        except Exception as e:
-            print(f"Invite friends error: {e}")
+        except Exception:
             await query.message.reply_text("Kechirasiz, xatolik yuz berdi. Iltimos keyinroq urinib ko'ring.")
     elif query.data == 'buy_attempts':
         await query.message.reply_text("Qo'shimcha urinish sotib olish uchun admin bilan bog'laning: @AzizJurayev")
@@ -414,10 +408,9 @@ async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== ENHANCED ADMIN PANEL ====================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced admin panel with menu"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ Bu buyruq faqat admin uchun!")
-        return
+        return MENU
     
     if update.callback_query:
         query = update.callback_query
@@ -436,7 +429,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MENU
 
 async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle admin menu callbacks"""
     query = update.callback_query
     await query.answer()
     
@@ -459,8 +451,7 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif query.data == 'admin_broadcast':
         await query.message.edit_text(
             "📢 *Xabar yuborish*\n\n"
-            "Xabar matnini yuboring. Bu xabar BARCHA foydalanuvchilarga boradi.\n"
-            "Rasm, video yoki hujjat ham yuborishingiz mumkin.\n\n"
+            "Xabar matnini yuboring. Bu xabar BARCHA foydalanuvchilarga boradi.\n\n"
             "Bekor qilish uchun /cancel yozing.",
             parse_mode='Markdown'
         )
@@ -508,21 +499,13 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     return MENU
 
 async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show detailed statistics"""
     db = SessionLocal()
     
-    # Question stats by major
     question_stats = db.query(Question.major, func.count(Question.id)).group_by(Question.major).all()
-    
-    # User stats
     total_users = db.query(User).count()
     users_by_major = db.query(User.major, func.count(User.id)).group_by(User.major).all()
-    
-    # Test completion stats
     total_tests = db.query(func.sum(User.tests_completed)).scalar() or 0
     total_points = db.query(func.sum(User.points)).scalar() or 0
-    
-    # Users with unlimited access
     unlimited_users = db.query(User).filter(User.full_access == True).count()
     
     db.close()
@@ -551,7 +534,6 @@ async def show_detailed_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(stats_text, parse_mode='Markdown')
 
 async def admin_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send users list as file with pagination"""
     db = SessionLocal()
     users = db.query(User).all()
     db.close()
@@ -560,7 +542,6 @@ async def admin_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.message.edit_text("📭 Bazada hech qanday foydalanuvchi yo'q.")
         return
     
-    # Create detailed CSV
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['ID', 'Ism', 'Telefon', 'Yo\'nalish', 'Ballar', 'Testlar soni', 'Urinishlar', 'Cheksiz huquq'])
@@ -585,7 +566,6 @@ async def admin_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.edit_text("✅ Foydalanuvchilar ro'yxati yuborildi!")
 
 async def show_test_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show top users by points"""
     db = SessionLocal()
     top_users = db.query(User).order_by(User.points.desc()).limit(10).all()
     db.close()
@@ -605,10 +585,7 @@ async def show_test_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.edit_text(result_text, parse_mode='Markdown')
 
 async def show_questions_to_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show questions list for deletion"""
     db = SessionLocal()
-    
-    # Get all majors
     majors = db.query(Question.major).distinct().all()
     db.close()
     
@@ -628,7 +605,6 @@ async def show_questions_to_delete(update: Update, context: ContextTypes.DEFAULT
     )
 
 async def show_questions_by_major(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show questions of selected major for deletion"""
     query = update.callback_query
     major = query.data.replace('delete_major_', '')
     
@@ -640,7 +616,6 @@ async def show_questions_by_major(update: Update, context: ContextTypes.DEFAULT_
         await query.message.edit_text(f"📭 {major} yo'nalishida savollar yo'q.")
         return
     
-    # Pagination
     page = context.user_data.get('delete_page', 0)
     per_page = 5
     total_pages = (len(questions) + per_page - 1) // per_page
@@ -650,14 +625,9 @@ async def show_questions_by_major(update: Update, context: ContextTypes.DEFAULT_
     
     keyboard = []
     for q in questions[start:end]:
-        # Truncate question text
         q_text = q.text[:40] + "..." if len(q.text) > 40 else q.text
-        keyboard.append([InlineKeyboardButton(
-            f"❌ {q_text}", 
-            callback_data=f'delete_q_{q.id}'
-        )])
+        keyboard.append([InlineKeyboardButton(f"❌ {q_text}", callback_data=f'delete_q_{q.id}')])
     
-    # Pagination buttons
     nav_buttons = []
     if page > 0:
         nav_buttons.append(InlineKeyboardButton("◀️ Oldingi", callback_data=f'delete_page_{page-1}_{major}'))
@@ -676,7 +646,6 @@ async def show_questions_by_major(update: Update, context: ContextTypes.DEFAULT_
     )
 
 async def delete_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Delete selected question"""
     query = update.callback_query
     question_id = int(query.data.replace('delete_q_', ''))
     
@@ -691,23 +660,17 @@ async def delete_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("❌ Savol topilmadi!", show_alert=True)
     
     db.close()
-    
-    # Refresh the list
     await show_questions_to_delete(update, context)
 
 async def handle_delete_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle pagination in delete questions"""
     query = update.callback_query
     data = query.data.replace('delete_page_', '')
     page, major = data.split('_', 1)
     context.user_data['delete_page'] = int(page)
-    
-    # Create a mock update to show questions for the new page
     query.data = f'delete_major_{major}'
     await show_questions_by_major(update, context)
 
 async def admin_save_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Save question from admin"""
     if update.effective_user.id != ADMIN_ID:
         return MENU
         
@@ -754,7 +717,6 @@ async def admin_save_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ADMIN_ADD_Q
 
 async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text input for admin actions"""
     action = context.user_data.get('admin_action')
     
     if action == 'waiting_broadcast':
@@ -773,15 +735,12 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
                 success += 1
             except Exception:
                 failed += 1
-                
-            # Rate limiting
+            
             if success % 10 == 0:
                 await asyncio.sleep(0.5)
         
         await status_msg.edit_text(f"✅ Xabar yuborildi!\n✅ Muvaffaqiyatli: {success}\n❌ Xato: {failed}")
         context.user_data.pop('admin_action', None)
-        
-        # Show admin panel again
         await admin_panel(update, context)
         return MENU
         
@@ -800,11 +759,10 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
                         chat_id=target_id,
                         text="🌟 Tabriklaymiz! Sizga testlarni cheksiz ishlash huquqi berildi!"
                     )
-                except:
+                except Exception:
                     pass
             else:
                 await update.message.reply_text("❌ Foydalanuvchi topilmadi!")
-            
             db.close()
         except ValueError:
             await update.message.reply_text("❌ Noto'g'ri ID format! Iltimos faqat raqam yuboring.")
@@ -817,4 +775,68 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
         try:
             target_id = int(update.message.text)
             db = SessionLocal()
-            user = db.query(User).filter(User.id == target_id).
+            user = db.query(User).filter(User.id == target_id).first()
+            
+            if user:
+                user.full_access = False
+                db.commit()
+                await update.message.reply_text(f"✅ {target_id} ning cheksiz huquqi olib tashlandi!")
+            else:
+                await update.message.reply_text("❌ Foydalanuvchi topilmadi!")
+            db.close()
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID format! Iltimos faqat raqam yuboring.")
+        
+        context.user_data.pop('admin_action', None)
+        await admin_panel(update, context)
+        return MENU
+    
+    return MENU
+
+# ==================== MAIN ====================
+def main():
+    app = Application.builder().token(TOKEN).build()
+    
+    conv = ConversationHandler(
+        entry_points=[
+            CommandHandler('start', start), 
+            CommandHandler('admin', admin_panel), 
+            CallbackQueryHandler(start, pattern='^check_sub$'),
+            CallbackQueryHandler(admin_callback_handler, pattern='^admin_'),
+            CallbackQueryHandler(show_questions_by_major, pattern='^delete_major_'),
+            CallbackQueryHandler(delete_question, pattern='^delete_q_'),
+            CallbackQueryHandler(handle_delete_pagination, pattern='^delete_page_'),
+            CallbackQueryHandler(admin_panel, pattern='^admin_panel_back$')
+        ],
+        states={
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_registration)],
+            MAJOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_registration)],
+            PHONE: [MessageHandler(filters.CONTACT, save_user)],
+            MENU: [
+                MessageHandler(filters.Regex('^📝 Testni boshlash$'), start_test),
+                MessageHandler(filters.Regex('^📊 Mening statistikam$'), get_stats),
+                MessageHandler(filters.Regex("^✨ Qo'shimcha imkoniyatlar$"), extra_options),
+                MessageHandler(filters.Regex("^👨‍💻 Bog'lanish$"), contact_admin),
+                CallbackQueryHandler(ask_new_major, pattern='^change_major$'),
+                CallbackQueryHandler(handle_extra_callbacks, pattern='^(invite_friends|buy_attempts)$'),
+                CommandHandler('admin', admin_panel),
+            ],
+            CHANGE_MAJOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_major)],
+            ADMIN_ADD_Q: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_save_question)],
+            ADMIN_BROADCAST: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input)],
+            ADMIN_GRANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input)],
+            ADMIN_REVOKE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input)],
+            TESTING: [PollAnswerHandler(handle_answer)]
+        },
+        fallbacks=[
+            CommandHandler('start', start), 
+            CommandHandler('admin', admin_panel),
+        ],
+        per_chat=False
+    )
+    
+    app.add_handler(conv)
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()

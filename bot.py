@@ -16,8 +16,8 @@ load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hamshira_db.db")
-REQUIRED_CHANNELS = ["@malakali_hamshiralar"]
-ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875"))
+REQUIRED_CHANNELS = ["@malakali_hamshiralar"] # Must be a public channel username
+ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875")) # Your Telegram ID
 
 # --- DB SETUP ---
 Base = declarative_base()
@@ -35,9 +35,9 @@ class User(Base):
     __tablename__ = "users"
     id = Column(BigInteger, primary_key=True)
     full_name = Column(String)
-    major = Column(String)
+    major = Column(String) # [cite: 7, 8]
     phone = Column(String)
-    points = Column(Float, default=3.0)
+    points = Column(Float, default=3.0) # 
     tests_completed = Column(Integer, default=0)
     attempts = Column(Integer, default=3)
     full_access = Column(Boolean, default=False)
@@ -51,7 +51,7 @@ class Question(Base):
     b = Column(String)
     c = Column(String)
     d = Column(String)
-    correct = Column(String)
+    correct = Column(String) # 'a', 'b', 'c', or 'd'
 
 Base.metadata.create_all(engine)
 
@@ -70,6 +70,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
 
+    # Subscription Check
     not_subscribed = []
     for ch in REQUIRED_CHANNELS:
         try:
@@ -100,8 +101,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if not user:
-        if not query and context.args: 
-            context.user_data['ref'] = context.args[0]
+        if not query and context.args: context.user_data['ref'] = context.args[0]
         db.close()
         if query:
             await query.message.delete()
@@ -118,19 +118,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Bosh sahifa:", reply_markup=main_menu())
     return MENU
 
+
 async def handle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get('reg_state', NAME)
     
     if state == NAME:
         context.user_data['name'] = update.message.text
-        btns = [['Hamshiralik ishi', 'Akusherlik ishi'], ['Patronaj hamshira', 'Davolash ishi']]
+        btns = [['Hamshiralik ishi', 'Akusherlik ishi'], ['Patronaj hamshira', 'Davolash ishi']] # [cite: 8]
         await update.message.reply_text("Yo'nalishni tanlang:", reply_markup=ReplyKeyboardMarkup(btns, resize_keyboard=True))
         context.user_data['reg_state'] = MAJOR
         return MAJOR
 
     elif state == MAJOR:
         context.user_data['major'] = update.message.text
-        btn = [[KeyboardButton("Raqamni yuborish", request_contact=True)]]
+        btn = [[KeyboardButton("Raqamni yuborish", request_contact=True)]] # [cite: 5, 15]
         await update.message.reply_text("Telefon raqamingizni yuboring:", reply_markup=ReplyKeyboardMarkup(btn, resize_keyboard=True))
         context.user_data['reg_state'] = PHONE
         return PHONE
@@ -139,6 +140,7 @@ async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     db = SessionLocal()
     
+    db = SessionLocal()
     try:
         new_user = User(
             id=user_id,
@@ -151,6 +153,7 @@ async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         db.add(new_user)
         
+        # Referral Logic 
         ref_id = context.user_data.get('ref')
         if ref_id and ref_id.isdigit():
             ref_user = db.query(User).filter(User.id == int(ref_id)).first()
@@ -182,7 +185,7 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👀Afsuski siz barcha test ishlash imkoniyatlaringizni ishlatib bo'libsiz.\n"
                 "🔥 Botga yana ko'proq yaqinlaringizni taklif qilib, shuncha ko'p tayyorgarlik imkoniyatingizni oshiring.\n"
                 "Har bitta hamshira tanishingizni referal havolangiz orqali loyihaga taklif qilsangiz +3 ta trenirovka imkoniyatini olasiz.\n"
-                "Bilimingizni oshirishda davom eting! 👏 😊\n",
+                "Bilimingizni oshirishdadavom eting! 👏 😊\n",
                 reply_markup=main_menu()
             )
             return await extra_options(update, context)
@@ -282,9 +285,10 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data['q_idx'] < 25:
         return await send_question(update, context)
     else:
+        # Final Score: correct = +1, wrong = 0
         c = context.user_data['correct_count']
         w = 25 - c
-        score = float(c)
+        score = float(c)  # 1 point per correct answer, 0 for wrong
         
         db = SessionLocal()
         try:
@@ -374,13 +378,13 @@ async def handle_extra_callbacks(update: Update, context: ContextTypes.DEFAULT_T
     return MENU
 
 async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Bu yerda admin logini (masalan: @sizning_loginingiz) ni yozishingiz mumkin
     await update.message.reply_text("Admin bilan bog'lanish uchun shu manzilga murojaat qiling: @AzizJurayev")
     return MENU
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("Bu buyruq faqat admin uchun!")
-        return MENU
+        return
     await update.message.reply_text(
         "Admin Paneli 🛠\n\nYangi test qo'shish uchun quyidagi formatda yuboring:\n\n"
         "Yo'nalish nomi (Misol: Hamshiralik ishi)\n"
@@ -396,24 +400,21 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("Bu buyruq faqat admin uchun!")
-        return MENU
+        return
         
     db = SessionLocal()
     from sqlalchemy import func
     stats = db.query(Question.major, func.count(Question.id)).group_by(Question.major).all()
-    db.close()
     
     if not stats:
         await update.message.reply_text("Bazada hali hech qanday savol yo'q.")
-        return MENU
+        return
         
     msg = "📊 Bazadagi savollar soni:\n\n"
     for major, count in stats:
         msg += f"🔸 {major}: {count} ta\n"
         
     await update.message.reply_text(msg)
-    return MENU
 
 async def admin_save_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -456,19 +457,17 @@ async def admin_save_question(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     db.add(new_q)
     db.commit()
-    db.close()
     
     await update.message.reply_text(f"✅ Test muvaffaqiyatli qo'shildi ({major})!\n\nYana test qo'shishingiz yoki /cancel yozishingiz mumkin.")
     return ADMIN_ADD_Q
 
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("Bu buyruq faqat admin uchun!")
-        return MENU
+        return
         
     if not context.args:
         await update.message.reply_text("Foydalanish: /broadcast <xabar matni>")
-        return MENU
+        return
         
     message_text = update.message.text.split(' ', 1)[1]
     
@@ -488,21 +487,20 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             failed += 1
             
     await result_msg.edit_text(f"Xabar yuborish yakunlandi!\n✅ Muvaffaqiyatli: {success}\n❌ Xato/Bloklangan: {failed}")
-    return MENU
+
 
 async def grant_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("Bu buyruq faqat admin uchun!")
-        return MENU
+        return
         
     if not context.args:
         await update.message.reply_text("Foydalanish: /grant_access <foydalanuvchi_id>")
-        return MENU
+        return
         
     target_id = context.args[0]
     if not target_id.isdigit():
-        await update.message.reply_text("Foydalanuvchi ID si faqat raqamlardan iborat bo'lishi kerak!")
-        return MENU
+        await update.message.reply_text("Foydalanuvchi ID si faqattan raqamlardan iborat bo'lishi kerak!")
+        return
         
     target_id = int(target_id)
     db = SessionLocal()
@@ -511,32 +509,29 @@ async def grant_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         await update.message.reply_text("Bunday ID ga ega foydalanuvchi topilmadi!")
         db.close()
-        return MENU
+        return
         
     user.full_access = True
     db.commit()
     db.close()
     
-    await update.message.reply_text(f"✅ Foydalanuvchi {target_id} ga to'liq kirish huquqi (cheksiz urinish) berildi!")
+    await update.message.reply_text(f"Foydalanuvchi {target_id} ga to'liq kirish huquqi (cheksiz urinish) berildi!")
     try:
         await context.bot.send_message(chat_id=target_id, text="🌟 Tabriklaymiz! Sizga admin tomonidan testlarni cheksiz ishlash huquqi berildi!")
     except Exception:
         pass
-    return MENU
 
 async def revoke_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("Bu buyruq faqat admin uchun!")
-        return MENU
+        return
         
     if not context.args:
         await update.message.reply_text("Foydalanish: /revoke_access <foydalanuvchi_id>")
-        return MENU
+        return
         
     target_id = context.args[0]
     if not target_id.isdigit():
-        await update.message.reply_text("ID faqat raqam bo'lishi kerak!")
-        return MENU
+        return
         
     target_id = int(target_id)
     db = SessionLocal()
@@ -545,16 +540,14 @@ async def revoke_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user:
         user.full_access = False
         db.commit()
-        await update.message.reply_text(f"✅ Foydalanuvchi {target_id} ning cheksiz huquqi bekor qilindi.")
+        await update.message.reply_text(f"Foydalanuvchi {target_id} ning cheksiz huquqi bekor qilindi.")
     else:
-        await update.message.reply_text("❌ Bunday ID topilmadi.")
+        await update.message.reply_text("Bunday ID topilmadi.")
     db.close()
-    return MENU
 
 async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("Bu buyruq faqat admin uchun!")
-        return MENU
+        return
         
     db = SessionLocal()
     users = db.query(User).all()
@@ -562,7 +555,7 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not users:
         await update.message.reply_text("Bazada hech qanday foydalanuvchi yo'q.")
-        return MENU
+        return
         
     text_content = "ID | Ism | Telefon | Yo'nalish | Cheksiz_huquq\n"
     text_content += "-"*60 + "\n"
@@ -573,53 +566,6 @@ async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = io.BytesIO(text_content.encode('utf-8'))
     doc.name = "users.txt"
     await context.bot.send_document(chat_id=update.effective_user.id, document=doc, caption="Barcha foydalanuvchilar ro'yxati:")
-    return MENU
-
-# --- FIX QUESTION FUNCTION (ASOSIY TUZATISH) ---
-async def fix_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Noto'g'ri kiritilgan savolni tuzatish"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⚠️ Bu buyruq faqat admin uchun!")
-        return MENU
-    
-    db = SessionLocal()
-    try:
-        # Noto'g'ri savolni qidirish
-        question = db.query(Question).filter(Question.text.contains("Bemorlarni qayd qilish jurnali")).first()
-        
-        if question:
-            old_correct = question.correct
-            question.correct = 'a'
-            db.commit()
-            await update.message.reply_text(
-                f"✅ **Savol tuzatildi!**\n\n"
-                f"📝 **Savol matni:** {question.text[:100]}...\n"
-                f"🔄 **Eski javob:** {old_correct.upper()}\n"
-                f"✨ **Yangi javob:** A\n\n"
-                f"Endi bu savolga to'g'ri javob **A** variantida!"
-            )
-        else:
-            # Agar topilmasa, eng oxirgi qo'shilgan savolni tuzatish
-            last_question = db.query(Question).order_by(Question.id.desc()).first()
-            if last_question:
-                old_correct = last_question.correct
-                last_question.correct = 'a'
-                db.commit()
-                await update.message.reply_text(
-                    f"✅ **Eng oxirgi savol tuzatildi!**\n\n"
-                    f"📝 **Savol matni:** {last_question.text[:100]}...\n"
-                    f"🔄 **Eski javob:** {old_correct.upper()}\n"
-                    f"✨ **Yangi javob:** A\n\n"
-                    f"⚠️ Agar bu siz xohlagan savol bo'lmasa, iltimos tekshirib ko'ring."
-                )
-            else:
-                await update.message.reply_text("❌ Hech qanday savol topilmadi!")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Xatolik yuz berdi: {e}")
-    finally:
-        db.close()
-    
-    return MENU
 
 def main_menu():
     return ReplyKeyboardMarkup([
@@ -640,7 +586,6 @@ def main():
             CommandHandler('broadcast', admin_broadcast),
             CommandHandler('grant_access', grant_access),
             CommandHandler('revoke_access', revoke_access),
-            CommandHandler('fix', fix_question),
             CallbackQueryHandler(start, pattern='^check_sub$')
         ],
         states={
@@ -659,8 +604,7 @@ def main():
                 CommandHandler('broadcast', admin_broadcast),
                 CommandHandler('grant_access', grant_access),
                 CommandHandler('revoke_access', revoke_access),
-                CommandHandler('users', admin_users),
-                CommandHandler('fix', fix_question),
+                CommandHandler('users', admin_users)
             ],
             CHANGE_MAJOR: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_major)
@@ -677,7 +621,6 @@ def main():
             CommandHandler('broadcast', admin_broadcast),
             CommandHandler('grant_access', grant_access),
             CommandHandler('revoke_access', revoke_access),
-            CommandHandler('fix', fix_question),
             CallbackQueryHandler(start, pattern='^check_sub$')
         ],
         per_chat=False

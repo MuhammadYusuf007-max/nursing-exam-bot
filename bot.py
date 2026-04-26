@@ -3,6 +3,7 @@ import random
 import io
 import asyncio
 import csv
+from sqlalchemy.pool import NullPool
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Float, BigInteger, Boolean, func
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -26,10 +27,10 @@ Base = declarative_base()
 
 engine = create_engine(
     DATABASE_URL,
-    pool_size=1,
-    max_overflow=0,
-    pool_pre_ping=True
-)
+    poolclass=NullPool,          # SQLite uchun eng yaxshi – har bir so'rov yangi ulanish
+    pool_pre_ping=True,
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+))
 
 SessionLocal = sessionmaker(bind=engine)
 

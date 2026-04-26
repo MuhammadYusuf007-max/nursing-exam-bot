@@ -25,12 +25,21 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "647129875"))
 # --- DB SETUP ---
 Base = declarative_base()
 
-engine = create_engine(
-    DATABASE_URL,
-    poolclass=NullPool,          # SQLite uchun eng yaxshi – har bir so'rov yangi ulanish
-    pool_pre_ping=True,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
-))
+# Database engine configuration
+if "sqlite" in DATABASE_URL:
+    engine = create_engine(
+        DATABASE_URL,
+        poolclass=NullPool,
+        connect_args={"check_same_thread": False}
+    )
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=20,
+        max_overflow=30,
+        pool_pre_ping=True,
+        pool_recycle=3600
+    )
 
 SessionLocal = sessionmaker(bind=engine)
 
@@ -56,6 +65,7 @@ class Question(Base):
     d = Column(String)
     correct = Column(String)
 
+# Create all tables
 Base.metadata.create_all(engine)
 
 # --- STATES ---

@@ -202,58 +202,58 @@ async def start_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == update.effective_user.id).first()
-        
-        if not user.full_access and user.attempts <= 0:
-            db.close()
-            await update.message.reply_text(
-                "👀 Afsuski siz barcha test ishlash imkoniyatlaringizni ishlatib bo'libsiz.\n"
-                "🔥 Botga yana ko'proq yaqinlaringizni taklif qilib, shuncha ko'p tayyorgarlik imkoniyatingizni oshiring.\n"
-                "Har bitta hamshira tanishingizni referal havolangiz orqali loyihaga taklif qilsangiz +3 ta trenirovka imkoniyatini olasiz.\n"
-                "Bilimingizni oshirishda davom eting! 👏 😊\n",
-                reply_markup=main_menu()
-            )
-            return await extra_options(update, context)
+        if not user:
+            await update.message.reply_text("Iltimos avval /start buyrug'ini bosing.")
+            return MENU
         
         questions = db.query(Question).filter(Question.major == user.major).all()
+        
         if len(questions) < 25:
-            db.close()
-            await update.message.reply_text("Kechirasiz, bazada yetarli savollar mavjud emas.")
+            await update.message.reply_text(f"Kechirasiz, '{user.major}' yo'nalishida faqat {len(questions)} ta savol bor. Kamida 25 ta kerak.")
             return MENU
         
         selected = random.sample(questions, 25)
         if not user.full_access:
             user.attempts -= 1
         db.commit()
-    finally:
+        
+        # === Build q_list BEFORE closing session ===
+        q_list = []
+        for q in selected:
+            # Access all attributes while session is still active
+            options = [
+                ('a', q.a),
+                ('b', q.b),
+                ('c', q.c),
+                ('d', q.d)
+            ]
+            random.shuffle(options)
+            
+            new_correct = 'a'
+            if q.correct:
+                correct_key = q.correct.strip().lower()
+                for i, (orig_key, _) in enumerate(options):
+                    if orig_key == correct_key:
+                        new_correct = ['a', 'b', 'c', 'd'][i]
+                        break
+            
+            q_list.append((
+                q.text,
+                options[0][1],
+                options[1][1],
+                options[2][1],
+                options[3][1],
+                new_correct
+            ))
+        
+        db.close()  # <-- NOW close after extracting all data
+        
+    except Exception as e:
         db.close()
+        await update.message.reply_text("Xatolik yuz berdi. Iltimos keyinroq urinib ko'ring.")
+        print(f"start_test error: {e}")
+        return MENU
     
-    q_list = []
-    for q in selected:
-        options = [
-            ('a', q.a),
-            ('b', q.b),
-            ('c', q.c),
-            ('d', q.d)
-        ]
-        random.shuffle(options)
-        
-        new_correct = 'a'
-        if q.correct:
-            correct_key = q.correct.strip().lower()
-            for i, (orig_key, text) in enumerate(options):
-                if orig_key == correct_key:
-                    new_correct = ['a', 'b', 'c', 'd'][i]
-                    break
-                    
-        q_list.append((
-            q.text,
-            options[0][1],
-            options[1][1],
-            options[2][1],
-            options[3][1],
-            new_correct
-        ))
-        
     context.user_data['q_list'] = q_list
     context.user_data['q_idx'] = 0
     context.user_data['correct_count'] = 0
